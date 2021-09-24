@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+/.vs/D3D12ExecuteIndirect/v16
+/obj/x64/Debug
+/bin/x64/Debug
+*.user
