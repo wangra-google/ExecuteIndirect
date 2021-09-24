@@ -34,3 +34,4 @@
 /obj/x64/Debug
 /bin/x64/Debug
 *.user
+/packages
