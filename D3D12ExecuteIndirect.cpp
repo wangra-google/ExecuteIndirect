@@ -11,12 +11,191 @@
 
 #include "stdafx.h"
 #include "D3D12ExecuteIndirect.h"
+#include <wincodec.h>
 
 const UINT D3D12ExecuteIndirect::CommandSizePerFrame = TriangleCount * sizeof(IndirectCommand);
 const UINT D3D12ExecuteIndirect::CommandBufferCounterOffset = AlignForUavCounter(D3D12ExecuteIndirect::CommandSizePerFrame);
 const float D3D12ExecuteIndirect::TriangleHalfWidth = 0.05f;
 const float D3D12ExecuteIndirect::TriangleDepth = 1.0f;
 const float D3D12ExecuteIndirect::CullingCutoff = 0.5f;
+
+DXGI_FORMAT GetDXGIFormatFromWICFormat(const WICPixelFormatGUID& wicFormatGUID)
+{
+	if (wicFormatGUID == GUID_WICPixelFormat128bppRGBAFloat) return DXGI_FORMAT_R32G32B32A32_FLOAT;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppRGBAHalf) return DXGI_FORMAT_R16G16B16A16_FLOAT;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppRGBA) return DXGI_FORMAT_R16G16B16A16_UNORM;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppRGBA) return DXGI_FORMAT_R8G8B8A8_UNORM;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppBGRA) return DXGI_FORMAT_B8G8R8A8_UNORM;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppBGR) return DXGI_FORMAT_B8G8R8X8_UNORM;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppRGBA1010102XR) return DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM;
+
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppRGBA1010102) return DXGI_FORMAT_R10G10B10A2_UNORM;
+	else if (wicFormatGUID == GUID_WICPixelFormat16bppBGRA5551) return DXGI_FORMAT_B5G5R5A1_UNORM;
+	else if (wicFormatGUID == GUID_WICPixelFormat16bppBGR565) return DXGI_FORMAT_B5G6R5_UNORM;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppGrayFloat) return DXGI_FORMAT_R32_FLOAT;
+	else if (wicFormatGUID == GUID_WICPixelFormat16bppGrayHalf) return DXGI_FORMAT_R16_FLOAT;
+	else if (wicFormatGUID == GUID_WICPixelFormat16bppGray) return DXGI_FORMAT_R16_UNORM;
+	else if (wicFormatGUID == GUID_WICPixelFormat8bppGray) return DXGI_FORMAT_R8_UNORM;
+	else if (wicFormatGUID == GUID_WICPixelFormat8bppAlpha) return DXGI_FORMAT_A8_UNORM;
+
+	else return DXGI_FORMAT_UNKNOWN;
+}
+
+WICPixelFormatGUID GetConvertToWICFormat(const WICPixelFormatGUID& wicFormatGUID)
+{
+	if (wicFormatGUID == GUID_WICPixelFormatBlackWhite) return GUID_WICPixelFormat8bppGray;
+	else if (wicFormatGUID == GUID_WICPixelFormat1bppIndexed) return GUID_WICPixelFormat32bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat2bppIndexed) return GUID_WICPixelFormat32bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat4bppIndexed) return GUID_WICPixelFormat32bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat8bppIndexed) return GUID_WICPixelFormat32bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat2bppGray) return GUID_WICPixelFormat8bppGray;
+	else if (wicFormatGUID == GUID_WICPixelFormat4bppGray) return GUID_WICPixelFormat8bppGray;
+	else if (wicFormatGUID == GUID_WICPixelFormat16bppGrayFixedPoint) return GUID_WICPixelFormat16bppGrayHalf;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppGrayFixedPoint) return GUID_WICPixelFormat32bppGrayFloat;
+	else if (wicFormatGUID == GUID_WICPixelFormat16bppBGR555) return GUID_WICPixelFormat16bppBGRA5551;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppBGR101010) return GUID_WICPixelFormat32bppRGBA1010102;
+	else if (wicFormatGUID == GUID_WICPixelFormat24bppBGR) return GUID_WICPixelFormat32bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat24bppRGB) return GUID_WICPixelFormat32bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppPBGRA) return GUID_WICPixelFormat32bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppPRGBA) return GUID_WICPixelFormat32bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat48bppRGB) return GUID_WICPixelFormat64bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat48bppBGR) return GUID_WICPixelFormat64bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppBGRA) return GUID_WICPixelFormat64bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppPRGBA) return GUID_WICPixelFormat64bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppPBGRA) return GUID_WICPixelFormat64bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat48bppRGBFixedPoint) return GUID_WICPixelFormat64bppRGBAHalf;
+	else if (wicFormatGUID == GUID_WICPixelFormat48bppBGRFixedPoint) return GUID_WICPixelFormat64bppRGBAHalf;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppRGBAFixedPoint) return GUID_WICPixelFormat64bppRGBAHalf;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppBGRAFixedPoint) return GUID_WICPixelFormat64bppRGBAHalf;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppRGBFixedPoint) return GUID_WICPixelFormat64bppRGBAHalf;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppRGBHalf) return GUID_WICPixelFormat64bppRGBAHalf;
+	else if (wicFormatGUID == GUID_WICPixelFormat48bppRGBHalf) return GUID_WICPixelFormat64bppRGBAHalf;
+	else if (wicFormatGUID == GUID_WICPixelFormat128bppPRGBAFloat) return GUID_WICPixelFormat128bppRGBAFloat;
+	else if (wicFormatGUID == GUID_WICPixelFormat128bppRGBFloat) return GUID_WICPixelFormat128bppRGBAFloat;
+	else if (wicFormatGUID == GUID_WICPixelFormat128bppRGBAFixedPoint) return GUID_WICPixelFormat128bppRGBAFloat;
+	else if (wicFormatGUID == GUID_WICPixelFormat128bppRGBFixedPoint) return GUID_WICPixelFormat128bppRGBAFloat;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppRGBE) return GUID_WICPixelFormat128bppRGBAFloat;
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppCMYK) return GUID_WICPixelFormat32bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppCMYK) return GUID_WICPixelFormat64bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat40bppCMYKAlpha) return GUID_WICPixelFormat64bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat80bppCMYKAlpha) return GUID_WICPixelFormat64bppRGBA;
+
+#if (_WIN32_WINNT >= _WIN32_WINNT_WIN8) || defined(_WIN7_PLATFORM_UPDATE)
+	else if (wicFormatGUID == GUID_WICPixelFormat32bppRGB) return GUID_WICPixelFormat32bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppRGB) return GUID_WICPixelFormat64bppRGBA;
+	else if (wicFormatGUID == GUID_WICPixelFormat64bppPRGBAHalf) return GUID_WICPixelFormat64bppRGBAHalf;
+#endif
+
+	else return GUID_WICPixelFormatDontCare;
+}
+
+int GetDXGIFormatBitsPerPixel(const DXGI_FORMAT& dxgiFormat)
+{
+	if (dxgiFormat == DXGI_FORMAT_R32G32B32A32_FLOAT) return 128;
+	else if (dxgiFormat == DXGI_FORMAT_R16G16B16A16_FLOAT) return 64;
+	else if (dxgiFormat == DXGI_FORMAT_R16G16B16A16_UNORM) return 64;
+	else if (dxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM) return 32;
+	else if (dxgiFormat == DXGI_FORMAT_B8G8R8A8_UNORM) return 32;
+	else if (dxgiFormat == DXGI_FORMAT_B8G8R8X8_UNORM) return 32;
+	else if (dxgiFormat == DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM) return 32;
+
+	else if (dxgiFormat == DXGI_FORMAT_R10G10B10A2_UNORM) return 32;
+	else if (dxgiFormat == DXGI_FORMAT_B5G5R5A1_UNORM) return 16;
+	else if (dxgiFormat == DXGI_FORMAT_B5G6R5_UNORM) return 16;
+	else if (dxgiFormat == DXGI_FORMAT_R32_FLOAT) return 32;
+	else if (dxgiFormat == DXGI_FORMAT_R16_FLOAT) return 16;
+	else if (dxgiFormat == DXGI_FORMAT_R16_UNORM) return 16;
+	else if (dxgiFormat == DXGI_FORMAT_R8_UNORM) return 8;
+	else if (dxgiFormat == DXGI_FORMAT_A8_UNORM) return 8;
+	return 0;
+}
+
+void LoadImageDataFromFile(std::vector<UINT8>& imageData, D3D12_RESOURCE_DESC& resourceDescription, const std::string& filename, int& bytesPerRow)
+{
+	static IWICImagingFactory* wicFactory;
+
+	IWICBitmapDecoder* wicDecoder = nullptr;
+	IWICBitmapFrameDecode* wicFrame = nullptr;
+	IWICFormatConverter* wicConverter = nullptr;
+
+	bool imageConverted = false;
+
+	if (wicFactory == nullptr)
+	{
+		ThrowIfFailed(CoInitialize(nullptr));
+
+		ThrowIfFailed(CoCreateInstance(
+			CLSID_WICImagingFactory,
+			nullptr,
+			CLSCTX_INPROC_SERVER,
+			IID_PPV_ARGS(&wicFactory)
+		));
+
+		ThrowIfFailed(wicFactory->CreateFormatConverter(&wicConverter));
+	}
+
+	std::wstring stemp = std::wstring(filename.begin(), filename.end());
+
+	ThrowIfFailed(wicFactory->CreateDecoderFromFilename(
+		stemp.c_str(),
+		nullptr,
+		GENERIC_READ,
+		WICDecodeMetadataCacheOnLoad,
+		&wicDecoder
+	));
+
+	ThrowIfFailed(wicDecoder->GetFrame(0, &wicFrame));
+
+	WICPixelFormatGUID pixelFormat;
+	ThrowIfFailed(wicFrame->GetPixelFormat(&pixelFormat));
+
+	UINT textureWidth, textureHeight;
+	ThrowIfFailed(wicFrame->GetSize(&textureWidth, &textureHeight));
+
+	DXGI_FORMAT dxgiFormat = GetDXGIFormatFromWICFormat(pixelFormat);
+
+	if (dxgiFormat == DXGI_FORMAT_UNKNOWN)
+	{
+		WICPixelFormatGUID convertToPixelFormat = GetConvertToWICFormat(pixelFormat);
+
+		assert(convertToPixelFormat != GUID_WICPixelFormatDontCare);
+
+		dxgiFormat = GetDXGIFormatFromWICFormat(convertToPixelFormat);
+
+		BOOL canConvert = FALSE;
+		ThrowIfFailed(wicConverter->CanConvert(pixelFormat, convertToPixelFormat, &canConvert));
+
+		ThrowIfFailed(wicConverter->Initialize(wicFrame, convertToPixelFormat, WICBitmapDitherTypeErrorDiffusion, 0, 0, WICBitmapPaletteTypeCustom));
+
+		imageConverted = true;
+	}
+
+	int bitsPerPixel = GetDXGIFormatBitsPerPixel(dxgiFormat);
+	bytesPerRow = (textureWidth * bitsPerPixel) / 8;
+	int imageSize = bytesPerRow * textureHeight;
+	imageData.resize(imageSize);
+	if (imageConverted)
+	{
+		ThrowIfFailed(wicConverter->CopyPixels(0, bytesPerRow, imageSize, &imageData[0]));
+	}
+	else
+	{
+		ThrowIfFailed(wicFrame->CopyPixels(0, bytesPerRow, imageSize, &imageData[0]));
+	}
+
+	resourceDescription = {};
+	resourceDescription.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resourceDescription.Alignment = 0;
+	resourceDescription.Width = textureWidth;
+	resourceDescription.Height = textureHeight;
+	resourceDescription.DepthOrArraySize = 1;
+	resourceDescription.MipLevels = 1;
+	resourceDescription.Format = dxgiFormat;
+	resourceDescription.SampleDesc.Count = 1;
+	resourceDescription.SampleDesc.Quality = 0;
+	resourceDescription.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	resourceDescription.Flags = D3D12_RESOURCE_FLAG_NONE;
+}
 
 D3D12ExecuteIndirect::D3D12ExecuteIndirect(UINT width, UINT height, std::wstring name) :
     DXSample(width, height, name),
@@ -157,7 +336,8 @@ void D3D12ExecuteIndirect::LoadPipeline()
         // Describe and create a constant buffer view (CBV), Shader resource
         // view (SRV), and unordered access view (UAV) descriptor heap.
         D3D12_DESCRIPTOR_HEAP_DESC cbvSrvUavHeapDesc = {};
-        cbvSrvUavHeapDesc.NumDescriptors = CbvSrvUavDescriptorCountPerFrame * FrameCount;
+        cbvSrvUavHeapDesc.NumDescriptors = CbvSrvUavDescriptorCountPerFrame * FrameCount
+            + 16; // TODO_RW: 2 * (1 SRV + 1 UAV) + 2 UAV < 16 
         cbvSrvUavHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         cbvSrvUavHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvSrvUavHeapDesc, IID_PPV_ARGS(&m_cbvSrvUavHeap)));
@@ -202,7 +382,8 @@ void D3D12ExecuteIndirect::LoadAssets()
         }
 
         CD3DX12_ROOT_PARAMETER1 rootParameters[GraphicsRootParametersCount];
-        rootParameters[Cbv].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_VERTEX);
+		rootParameters[Cbv].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+		rootParameters[Srv].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_PIXEL);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
         rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -228,13 +409,33 @@ void D3D12ExecuteIndirect::LoadAssets()
         ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, featureData.HighestVersion, &signature, &error));
         ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_computeRootSignature)));
         NAME_D3D12_OBJECT(m_computeRootSignature);
+
+		/**************************************************************************************************/
+        {
+			CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+			ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+			ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+
+			CD3DX12_ROOT_PARAMETER1 rootParameters[2] = {};
+			rootParameters[0].InitAsConstants(4, 0);
+			rootParameters[1].InitAsDescriptorTable(2, ranges);
+
+			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+			rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters);
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, featureData.HighestVersion, &signature, &error));
+			ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_textureRootSignature)));
+        }
+	    /**************************************************************************************************/
+
     }
 
     // Create the pipeline state, which includes compiling and loading shaders.
     {
         ComPtr<ID3DBlob> vertexShader;
         ComPtr<ID3DBlob> pixelShader;
-        ComPtr<ID3DBlob> computeShader;
+		ComPtr<ID3DBlob> computeShader;
+		ComPtr<ID3DBlob> textureShader;
         ComPtr<ID3DBlob> error;
 
 #if defined(_DEBUG)
@@ -247,11 +448,15 @@ void D3D12ExecuteIndirect::LoadAssets()
         ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"shaders.hlsl").c_str(), nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, &error));
         ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"shaders.hlsl").c_str(), nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, &error));
         ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"compute.hlsl").c_str(), nullptr, nullptr, "CSMain", "cs_5_0", compileFlags, 0, &computeShader, &error));
+		/**************************************************************************************************/
+		ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"texture.hlsl").c_str(), nullptr, nullptr, "CSMain", "cs_5_0", compileFlags, 0, &textureShader, &error));
+		/**************************************************************************************************/
 
         // Define the vertex input layout.
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
         {
-            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
 
         // Describe and create the graphics pipeline state objects (PSO).
@@ -280,7 +485,17 @@ void D3D12ExecuteIndirect::LoadAssets()
 
         ThrowIfFailed(m_device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&m_computeState)));
         NAME_D3D12_OBJECT(m_computeState);
-    }
+
+		/**************************************************************************************************/
+		// Describe and create the compute pipeline state object (PSO).
+		D3D12_COMPUTE_PIPELINE_STATE_DESC texturePsoDesc = {};
+		computePsoDesc.pRootSignature = m_textureRootSignature.Get();
+		computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(textureShader.Get());
+
+		ThrowIfFailed(m_device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&m_textureState)));
+		NAME_D3D12_OBJECT(m_textureState);
+		/**************************************************************************************************/
+	}
 
     // Create the command list.
     ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[m_frameIndex].Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)));
@@ -294,55 +509,191 @@ void D3D12ExecuteIndirect::LoadAssets()
     // the command list that references them has finished executing on the GPU.
     // We will flush the GPU at the end of this method to ensure the resources are not
     // prematurely destroyed.
-    ComPtr<ID3D12Resource> vertexBufferUpload;
     ComPtr<ID3D12Resource> commandBufferUpload;
+	ComPtr<ID3D12Resource> triangleVertexBufferUpload;
+	ComPtr<ID3D12Resource> triangleIndexBufferUpload;
+	ComPtr<ID3D12Resource> quadVertexBufferUpload;
+	ComPtr<ID3D12Resource> quadIndexBufferUpload;
 
-    // Create the vertex buffer.
+    // Triangles
     {
-        // Define the geometry for a triangle.
-        Vertex triangleVertices[] =
+        // Create the vertex buffer.
         {
-            { { 0.0f, TriangleHalfWidth, TriangleDepth } },
-            { { TriangleHalfWidth, -TriangleHalfWidth, TriangleDepth } },
-            { { -TriangleHalfWidth, -TriangleHalfWidth, TriangleDepth } }
-        };
+            // Define the geometry for a triangle.
+            Vertex triangleVertices[] =
+            {
+                { { 0.0f, TriangleHalfWidth, TriangleDepth }, {0.5f, 0.0f} },
+                { { TriangleHalfWidth, -TriangleHalfWidth, TriangleDepth }, {1.f, 1.f} },
+                { { -TriangleHalfWidth, -TriangleHalfWidth, TriangleDepth }, {0.0f, 1.f} }
+            };
 
-        const UINT vertexBufferSize = sizeof(triangleVertices);
+            const UINT vertexBufferSize = sizeof(triangleVertices);
 
-        ThrowIfFailed(m_device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-            D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
-            D3D12_RESOURCE_STATE_COPY_DEST,
-            nullptr,
-            IID_PPV_ARGS(&m_vertexBuffer)));
+            ThrowIfFailed(m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                nullptr,
+                IID_PPV_ARGS(&m_triangleMesh.vertexBuffer)));
 
-        ThrowIfFailed(m_device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-            D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&vertexBufferUpload)));
+            ThrowIfFailed(m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+                D3D12_HEAP_FLAG_NONE,
+                &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&triangleVertexBufferUpload)));
 
-        NAME_D3D12_OBJECT(m_vertexBuffer);
+            NAME_D3D12_OBJECT(m_triangleMesh.vertexBuffer);
 
-        // Copy data to the intermediate upload heap and then schedule a copy
-        // from the upload heap to the vertex buffer.
-        D3D12_SUBRESOURCE_DATA vertexData = {};
-        vertexData.pData = reinterpret_cast<UINT8*>(triangleVertices);
-        vertexData.RowPitch = vertexBufferSize;
-        vertexData.SlicePitch = vertexData.RowPitch;
+            // Copy data to the intermediate upload heap and then schedule a copy
+            // from the upload heap to the vertex buffer.
+            D3D12_SUBRESOURCE_DATA vertexData = {};
+            vertexData.pData = reinterpret_cast<UINT8*>(triangleVertices);
+            vertexData.RowPitch = vertexBufferSize;
+            vertexData.SlicePitch = vertexData.RowPitch;
 
-        UpdateSubresources<1>(m_commandList.Get(), m_vertexBuffer.Get(), vertexBufferUpload.Get(), 0, 0, 1, &vertexData);
-        m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+            UpdateSubresources<1>(m_commandList.Get(), m_triangleMesh.vertexBuffer.Get(), triangleVertexBufferUpload.Get(), 0, 0, 1, &vertexData);
+            m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_triangleMesh.vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
 
-        // Initialize the vertex buffer view.
-        m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
-        m_vertexBufferView.StrideInBytes = sizeof(Vertex);
-        m_vertexBufferView.SizeInBytes = sizeof(triangleVertices);
+            // Initialize the vertex buffer view.
+            m_triangleMesh.vertexBufferView.BufferLocation = m_triangleMesh.vertexBuffer->GetGPUVirtualAddress();
+            m_triangleMesh.vertexBufferView.StrideInBytes = sizeof(Vertex);
+            m_triangleMesh.vertexBufferView.SizeInBytes = sizeof(triangleVertices);
+        }
+
+        // Create the Index buffer
+        {
+            USHORT indices[] = {0, 1, 2};
+
+			const UINT indexBufferSize = sizeof(indices);
+
+			ThrowIfFailed(m_device->CreateCommittedResource(
+				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+				D3D12_HEAP_FLAG_NONE,
+				&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+				D3D12_RESOURCE_STATE_COPY_DEST,
+				nullptr,
+				IID_PPV_ARGS(&m_triangleMesh.indexBuffer)));
+
+			ThrowIfFailed(m_device->CreateCommittedResource(
+				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+				D3D12_HEAP_FLAG_NONE,
+				&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				nullptr,
+				IID_PPV_ARGS(&triangleIndexBufferUpload)));
+
+			NAME_D3D12_OBJECT(m_triangleMesh.indexBuffer);
+
+			// Copy data to the intermediate upload heap and then schedule a copy
+			// from the upload heap to the vertex buffer.
+			D3D12_SUBRESOURCE_DATA indexData = {};
+            indexData.pData = reinterpret_cast<UINT8*>(indices);
+            indexData.RowPitch = indexBufferSize;
+            indexData.SlicePitch = indexData.RowPitch;
+
+			UpdateSubresources<1>(m_commandList.Get(), m_triangleMesh.indexBuffer.Get(), triangleIndexBufferUpload.Get(), 0, 0, 1, &indexData);
+			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_triangleMesh.indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
+
+			// Initialize the index buffer view.
+            m_triangleMesh.indexBufferView.BufferLocation = m_triangleMesh.indexBuffer->GetGPUVirtualAddress();
+            m_triangleMesh.indexBufferView.SizeInBytes = indexBufferSize;
+            m_triangleMesh.indexBufferView.Format = DXGI_FORMAT_R16_UINT;
+        }
     }
 
+	// Quad
+	{
+		// Create the vertex buffer.
+		{
+			// Define the geometry for a triangle.
+			Vertex quadVertices[] =
+			{
+				{ { -TriangleHalfWidth, TriangleHalfWidth, TriangleDepth }, {0.0f, 0.0f} },
+				{ { TriangleHalfWidth, TriangleHalfWidth, TriangleDepth }, {1.f, 0.f} },
+				{ { TriangleHalfWidth, -TriangleHalfWidth, TriangleDepth }, {1.f, 1.f} },
+				{ { -TriangleHalfWidth, -TriangleHalfWidth, TriangleDepth }, {0.0f, 1.f} }
+			};
+
+			const UINT vertexBufferSize = sizeof(quadVertices);
+
+			ThrowIfFailed(m_device->CreateCommittedResource(
+				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+				D3D12_HEAP_FLAG_NONE,
+				&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+				D3D12_RESOURCE_STATE_COPY_DEST,
+				nullptr,
+				IID_PPV_ARGS(&m_quadMesh.vertexBuffer)));
+
+			ThrowIfFailed(m_device->CreateCommittedResource(
+				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+				D3D12_HEAP_FLAG_NONE,
+				&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				nullptr,
+				IID_PPV_ARGS(&quadVertexBufferUpload)));
+
+			NAME_D3D12_OBJECT(m_quadMesh.vertexBuffer);
+
+			// Copy data to the intermediate upload heap and then schedule a copy
+			// from the upload heap to the vertex buffer.
+			D3D12_SUBRESOURCE_DATA vertexData = {};
+			vertexData.pData = reinterpret_cast<UINT8*>(quadVertices);
+			vertexData.RowPitch = vertexBufferSize;
+			vertexData.SlicePitch = vertexData.RowPitch;
+
+			UpdateSubresources<1>(m_commandList.Get(), m_quadMesh.vertexBuffer.Get(), quadVertexBufferUpload.Get(), 0, 0, 1, &vertexData);
+			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_quadMesh.vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+
+			// Initialize the vertex buffer view.
+            m_quadMesh.vertexBufferView.BufferLocation = m_quadMesh.vertexBuffer->GetGPUVirtualAddress();
+            m_quadMesh.vertexBufferView.StrideInBytes = sizeof(Vertex);
+            m_quadMesh.vertexBufferView.SizeInBytes = sizeof(quadVertices);
+		}
+
+		// Create the Index buffer
+		{
+			USHORT indices[] = { 0, 1, 3, 1, 2, 3 };
+
+			const UINT indexBufferSize = sizeof(indices);
+
+			ThrowIfFailed(m_device->CreateCommittedResource(
+				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+				D3D12_HEAP_FLAG_NONE,
+				&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+				D3D12_RESOURCE_STATE_COPY_DEST,
+				nullptr,
+				IID_PPV_ARGS(&m_quadMesh.indexBuffer)));
+
+			ThrowIfFailed(m_device->CreateCommittedResource(
+				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+				D3D12_HEAP_FLAG_NONE,
+				&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				nullptr,
+				IID_PPV_ARGS(&quadIndexBufferUpload)));
+
+			NAME_D3D12_OBJECT(m_quadMesh.indexBuffer);
+
+			// Copy data to the intermediate upload heap and then schedule a copy
+			// from the upload heap to the vertex buffer.
+			D3D12_SUBRESOURCE_DATA indexData = {};
+			indexData.pData = reinterpret_cast<UINT8*>(indices);
+			indexData.RowPitch = indexBufferSize;
+			indexData.SlicePitch = indexData.RowPitch;
+
+			UpdateSubresources<1>(m_commandList.Get(), m_quadMesh.indexBuffer.Get(), quadIndexBufferUpload.Get(), 0, 0, 1, &indexData);
+			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_quadMesh.indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
+
+			// Initialize the index buffer view.
+            m_quadMesh.indexBufferView.BufferLocation = m_quadMesh.indexBuffer->GetGPUVirtualAddress();
+            m_quadMesh.indexBufferView.SizeInBytes = indexBufferSize;
+            m_quadMesh.indexBufferView.Format = DXGI_FORMAT_R16_UINT;
+		}
+	}
+	
     // Create the depth stencil view.
     {
         D3D12_DEPTH_STENCIL_VIEW_DESC depthStencilDesc = {};
@@ -390,7 +741,8 @@ void D3D12ExecuteIndirect::LoadAssets()
             m_constantBufferData[n].offset = XMFLOAT4(GetRandomFloat(-5.0f, -1.5f), GetRandomFloat(-1.0f, 1.0f), GetRandomFloat(0.0f, 2.0f), 0.0f);
             m_constantBufferData[n].color = XMFLOAT4(GetRandomFloat(0.5f, 1.0f), GetRandomFloat(0.5f, 1.0f), GetRandomFloat(0.5f, 1.0f), 1.0f);
             XMStoreFloat4x4(&m_constantBufferData[n].projection, XMMatrixTranspose(XMMatrixPerspectiveFovLH(XM_PIDIV4, m_aspectRatio, 0.01f, 20.0f)));
-        }
+			m_constantBufferData[n].size = XMFLOAT4(m_viewport.Width, m_viewport.Height, (float)m_textureWidth, (float)m_textureHeight);
+		}
 
         // Map and initialize the constant buffer. We don't unmap this until the
         // app closes. Keeping things mapped for the lifetime of the resource is okay.
@@ -420,10 +772,12 @@ void D3D12ExecuteIndirect::LoadAssets()
     // Create the command signature used for indirect drawing.
     {
         // Each command consists of a CBV update and a DrawInstanced call.
-        D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[2] = {};
+        D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[3] = {};
         argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT_BUFFER_VIEW;
         argumentDescs[0].ConstantBufferView.RootParameterIndex = Cbv;
-        argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+		argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_SHADER_RESOURCE_VIEW;
+		argumentDescs[1].ConstantBufferView.RootParameterIndex = Srv;
+        argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
 
         D3D12_COMMAND_SIGNATURE_DESC commandSignatureDesc = {};
         commandSignatureDesc.pArgumentDescs = argumentDescs;
@@ -433,6 +787,86 @@ void D3D12ExecuteIndirect::LoadAssets()
         ThrowIfFailed(m_device->CreateCommandSignature(&commandSignatureDesc, m_rootSignature.Get(), IID_PPV_ARGS(&m_commandSignature)));
         NAME_D3D12_OBJECT(m_commandSignature);
     }
+
+	/**************************************************************************************************/
+	// user data
+	m_textureHeapOffset = CbvSrvUavDescriptorCountPerFrame * FrameCount;
+	// Create the texture.
+	ComPtr<ID3D12Resource> textureStaging; // this has to be valid until the cmd has been finished
+	{
+		std::vector<UINT8> imageData;
+		D3D12_RESOURCE_DESC textureDesc = {};
+		int imageBytesPerRow;
+		std::string filename = "yeti.png";
+		LoadImageDataFromFile(imageData, textureDesc, filename, imageBytesPerRow);
+
+		ThrowIfFailed(m_device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&textureDesc,
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			nullptr,
+			IID_PPV_ARGS(&m_texture)));
+
+		m_textureWidth = (uint32_t)textureDesc.Width;
+		m_textureHeight = (uint32_t)textureDesc.Height;
+
+		const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_texture.Get(), 0, 1);
+
+		// Create the GPU upload buffer.
+		ThrowIfFailed(m_device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&textureStaging)));
+
+		D3D12_SUBRESOURCE_DATA textureData = {};
+		textureData.pData = &imageData[0];
+		textureData.RowPitch = imageBytesPerRow;
+		textureData.SlicePitch = textureData.RowPitch * textureDesc.Height;
+
+		UpdateSubresources(m_commandList.Get(), m_texture.Get(), textureStaging.Get(), 0, 0, 1, &textureData);
+		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = textureDesc.Format;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+		CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(m_cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), m_textureHeapOffset, m_cbvSrvUavDescriptorSize);
+		m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, srvHandle);
+
+		// create a buffer to keep the output result
+		D3D12_RESOURCE_DESC commandBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(textureDesc.Width * textureDesc.Height * 3 * sizeof(float), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+		ThrowIfFailed(m_device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&commandBufferDesc,
+			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+			nullptr,
+			IID_PPV_ARGS(&m_textureBuffer)));
+
+		NAME_D3D12_OBJECT(m_textureBuffer);
+
+		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+		uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+		uavDesc.Buffer.FirstElement = 0;
+		uavDesc.Buffer.NumElements = m_textureWidth * m_textureHeight * 3;
+		uavDesc.Buffer.StructureByteStride = 0;
+		uavDesc.Buffer.CounterOffsetInBytes = 0;
+		uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(m_cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), m_textureHeapOffset + 1, m_cbvSrvUavDescriptorSize);
+		m_device->CreateUnorderedAccessView(
+			m_textureBuffer.Get(),
+			nullptr,
+			&uavDesc,
+			uavHandle);
+	}
+	/**************************************************************************************************/
 
     // Create the command buffers and UAVs to store the results of the compute work.
     {
@@ -466,10 +900,12 @@ void D3D12ExecuteIndirect::LoadAssets()
         {
             for (UINT n = 0; n < TriangleCount; n++)
             {
-                commands[commandIndex].cbv = gpuAddress;
-                commands[commandIndex].drawArguments.VertexCountPerInstance = 3;
+				commands[commandIndex].cbv = gpuAddress;
+				commands[commandIndex].srv = m_textureBuffer->GetGPUVirtualAddress();
+				commands[commandIndex].drawArguments.BaseVertexLocation = 0;
+				commands[commandIndex].drawArguments.IndexCountPerInstance = 6;
                 commands[commandIndex].drawArguments.InstanceCount = 1;
-                commands[commandIndex].drawArguments.StartVertexLocation = 0;
+                commands[commandIndex].drawArguments.StartIndexLocation = 0;
                 commands[commandIndex].drawArguments.StartInstanceLocation = 0;
 
                 commandIndex++;
@@ -691,7 +1127,6 @@ void D3D12ExecuteIndirect::OnDestroy()
     // Ensure that the GPU is no longer referencing resources that are about to be
     // cleaned up by the destructor.
     WaitForGpu();
-
     CloseHandle(m_fenceEvent);
 }
 
@@ -701,6 +1136,13 @@ void D3D12ExecuteIndirect::OnKeyDown(UINT8 key)
     {
         m_enableCulling = !m_enableCulling;
     }
+}
+
+template<typename T, typename ALIGNMENT>
+T AlignValue(T value, ALIGNMENT alignment)
+{
+	const T alignMinus1 = (T)alignment - 1;
+	return (value + alignMinus1) & ~alignMinus1;
 }
 
 // Fill the command list with all the render commands and dependent state.
@@ -748,11 +1190,32 @@ void D3D12ExecuteIndirect::PopulateCommandLists()
 
     // Record the rendering commands.
     {
-        // Set necessary state.
-        m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
+		ID3D12DescriptorHeap* ppHeaps[] = { m_cbvSrvUavHeap.Get() };
+		m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-        ID3D12DescriptorHeap* ppHeaps[] = { m_cbvSrvUavHeap.Get() };
-        m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+		/**************************************************************************************************/
+        {
+			m_commandList->SetComputeRootSignature(m_textureRootSignature.Get());
+			D3D12_GPU_DESCRIPTOR_HANDLE cbvSrvUavHandle = m_cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart();
+			m_commandList->SetComputeRootDescriptorTable(
+				0,
+				CD3DX12_GPU_DESCRIPTOR_HANDLE(cbvSrvUavHandle, m_textureHeapOffset, m_cbvSrvUavDescriptorSize));
+            uint32_t rootConsts[2] = {m_textureWidth, m_textureHeight};
+            m_commandList->SetComputeRoot32BitConstants(0, 2, reinterpret_cast<void*>(&rootConsts), 0);
+            m_commandList->Dispatch(AlignValue(m_textureWidth, 8)/8, AlignValue(m_textureHeight, 8) / 8, 1);
+            {
+				D3D12_RESOURCE_BARRIER barriers[1] = {
+				CD3DX12_RESOURCE_BARRIER::Transition(m_textureBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+				};
+				m_commandList->ResourceBarrier(_countof(barriers), barriers);
+            }
+			
+		}
+		
+		/**************************************************************************************************/
+
+		// Set necessary state.
+        m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 
         m_commandList->RSSetViewports(1, &m_viewport);
         m_commandList->RSSetScissorRects(1, m_enableCulling ? &m_cullingScissorRect : &m_scissorRect);
@@ -781,8 +1244,11 @@ void D3D12ExecuteIndirect::PopulateCommandLists()
         m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
         m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-        m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-        m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+        m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        /*m_commandList->IASetVertexBuffers(0, 1, &m_triangleMesh.vertexBufferView);
+        m_commandList->IASetIndexBuffer(&m_triangleMesh.indexBufferView);*/
+		m_commandList->IASetVertexBuffers(0, 1, &m_quadMesh.vertexBufferView);
+		m_commandList->IASetIndexBuffer(&m_quadMesh.indexBufferView);
 
         if (m_enableCulling)
         {

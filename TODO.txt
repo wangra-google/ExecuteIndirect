@@ -1,9 +1,17 @@
 - change draw -> draw index
 - add support for quad
 - add support for texture
-- update cull cs 
+- update cull cs
 - add support for uav
 - add execute indirect new blur pass
 - add resolve pass
 - add save data
 - run with saved data
+
+
+Limit
+- can only modify SRV/UAV/CBV in root
+- root SRV cannot be texture
+- root UAV/SRV cannot be typed buffer
+https://www.gamedev.net/forums/topic/678623-d3d12-using-setgraphicsrootview-functions/
+- only raw gpu address are needed, no need to create SRV/UAV/CBV per say

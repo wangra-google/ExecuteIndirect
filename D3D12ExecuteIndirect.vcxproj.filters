@@ -67,6 +67,9 @@
     <CustomBuild Include="compute.hlsl">
       <Filter>Assets\Shaders</Filter>
     </CustomBuild>
+    <CustomBuild Include="texture.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </CustomBuild>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

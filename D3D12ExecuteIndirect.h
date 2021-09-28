@@ -47,7 +47,8 @@ private:
     // Vertex definition.
     struct Vertex
     {
-        XMFLOAT3 position;
+		XMFLOAT3 position;
+		XMFLOAT2 texcoord;
     };
 
     // Constant buffer definition.
@@ -57,10 +58,11 @@ private:
         XMFLOAT4 offset;
         XMFLOAT4 color;
         XMFLOAT4X4 projection;
+        XMFLOAT4 size;
 
         // Constant buffers are 256-byte aligned. Add padding in the struct to allow multiple buffers
         // to be array-indexed.
-        float padding[36];
+        float padding[32];
     };
 
     // Root constants for the compute shader.
@@ -75,14 +77,16 @@ private:
     // Data structure to match the command signature used for ExecuteIndirect.
     struct IndirectCommand
     {
-        D3D12_GPU_VIRTUAL_ADDRESS cbv;
-        D3D12_DRAW_ARGUMENTS drawArguments;
+		D3D12_GPU_VIRTUAL_ADDRESS cbv;
+		D3D12_GPU_VIRTUAL_ADDRESS srv;
+        D3D12_DRAW_INDEXED_ARGUMENTS drawArguments;
     };
 
     // Graphics root signature parameter offsets.
     enum GraphicsRootParameters
     {
-        Cbv,
+		Cbv,
+		Srv,
         GraphicsRootParametersCount
     };
 
@@ -94,7 +98,7 @@ private:
         ComputeRootParametersCount
     };
 
-    // CBV/SRV/UAV desciptor heap offsets.
+    // CBV/SRV/UAV descriptor heap offsets.
     enum HeapOffsets
     {
         CbvSrvOffset = 0,                                                    // SRV that points to the constant buffers used by the rendering thread.
@@ -139,16 +143,33 @@ private:
 
     // Asset objects.
     ComPtr<ID3D12PipelineState> m_pipelineState;
-    ComPtr<ID3D12PipelineState> m_computeState;
+	ComPtr<ID3D12PipelineState> m_computeState;
+	ComPtr<ID3D12PipelineState> m_textureState;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
     ComPtr<ID3D12GraphicsCommandList> m_computeCommandList;
-    ComPtr<ID3D12Resource> m_vertexBuffer;
     ComPtr<ID3D12Resource> m_constantBuffer;
     ComPtr<ID3D12Resource> m_depthStencil;
     ComPtr<ID3D12Resource> m_commandBuffer;
     ComPtr<ID3D12Resource> m_processedCommandBuffers[FrameCount];
     ComPtr<ID3D12Resource> m_processedCommandBufferCounterReset;
-    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+
+    struct MeshData
+    {
+		ComPtr<ID3D12Resource>      vertexBuffer;
+		D3D12_VERTEX_BUFFER_VIEW    vertexBufferView;
+		ComPtr<ID3D12Resource>      indexBuffer;
+		D3D12_INDEX_BUFFER_VIEW     indexBufferView;
+    };
+
+	MeshData m_triangleMesh;
+	MeshData m_quadMesh;
+	ComPtr<ID3D12Resource> m_texture;
+	ComPtr<ID3D12Resource> m_textureBuffer;
+	uint32_t m_textureHeapOffset;
+	uint32_t m_textureWidth;
+	uint32_t m_textureHeight;
+	ComPtr<ID3D12RootSignature> m_textureRootSignature;
+
 
     void LoadPipeline();
     void LoadAssets();

@@ -15,27 +15,43 @@ cbuffer SceneConstantBuffer : register(b0)
     float4 offset;
     float4 color;
     float4x4 projection;
+    float4 size;
 };
+
+ByteAddressBuffer inputBuffer: register(t0);
 
 struct PSInput
 {
     float4 position : SV_POSITION;
     float4 color : COLOR;
+    float2 texcoord : TEXCOORD0;
 };
 
-PSInput VSMain(float4 position : POSITION)
+struct VSInput
+{
+    float4 position : POSITION;
+    float2 texcoord : TEXCOORD0;
+};
+
+PSInput VSMain(VSInput input)
 {
     PSInput result;
 
-    result.position = mul(position + offset, projection);
+    result.position = mul(input.position + offset, projection);
 
     float intensity = saturate((4.0f - result.position.z) / 2.0f);
     result.color = float4(color.xyz * intensity, 1.0f);
+    result.texcoord = input.texcoord;
 
     return result;
 }
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    return input.color;
+    float2 screenUV = input.position.xy / size.xy;
+    uint2 uv = screenUV.xy * size.zw;
+    uint offset = uv.y * size.w + uv.x;
+    uint3 ucolor = inputBuffer.Load3(offset * 4);
+    float4 color = float4(asfloat(ucolor.x), asfloat(ucolor.y), asfloat(ucolor.z), 1.f);
+    return color;
 }
