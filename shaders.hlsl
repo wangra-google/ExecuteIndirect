@@ -50,8 +50,8 @@ float4 PSMain(PSInput input) : SV_TARGET
 {
     float2 screenUV = input.position.xy / size.xy;
     uint2 uv = screenUV.xy * size.zw;
-    uint offset = uv.y * size.w + uv.x;
-    uint3 ucolor = inputBuffer.Load3(offset * 4);
+    uint offset = uv.y * size.z + uv.x;
+    uint3 ucolor = inputBuffer.Load3(offset * 3 * 4);
     float4 color = float4(asfloat(ucolor.x), asfloat(ucolor.y), asfloat(ucolor.z), 1.f);
-    return color;
+    return color * input.color;
 }
