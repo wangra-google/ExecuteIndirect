@@ -66,9 +66,11 @@ private:
 	struct IndirectArgsConstantBuffer
 	{
 		D3D12_GPU_VIRTUAL_ADDRESS   srvAddress[2];
+        D3D12_INDEX_BUFFER_VIEW     ib[2];
+        D3D12_VERTEX_BUFFER_VIEW    vb[2];
 		XMFLOAT4                    rootConstants[2];
         uint32_t                    indexCountPerInstance[2];
-		float padding[50];
+		float padding[34];
 	};
 
     // Root constants for the compute shader.
@@ -85,9 +87,15 @@ private:
     {
 		D3D12_GPU_VIRTUAL_ADDRESS       cbv;
 		D3D12_GPU_VIRTUAL_ADDRESS       srv;
+        D3D12_INDEX_BUFFER_VIEW         ib;
+        D3D12_VERTEX_BUFFER_VIEW        vb;
 		XMFLOAT4                        rootConstants;
 		D3D12_DRAW_INDEXED_ARGUMENTS    drawArguments;
-    };
+        // RW: compiler will auto pad this if this is not here (to 88 bytes)
+        // the command would work since commandSignatureDesc.ByteStride = sizeof(IndirectCommand);
+        // no need to change shader to match the padding, but renderdoc would show wrong result without padding
+		float padding;
+	};
 
     // Graphics root signature parameter offsets.
     enum GraphicsRootParameters
@@ -163,7 +171,8 @@ private:
     ComPtr<ID3D12Resource> m_processedCommandBuffers[FrameCount];
     ComPtr<ID3D12Resource> m_processedCommandBufferCounterReset;
 
-    struct MeshData
+	const static uint32_t kAssetCount = 2;
+	struct MeshData
     {
 		ComPtr<ID3D12Resource>      vertexBuffer;
 		D3D12_VERTEX_BUFFER_VIEW    vertexBufferView;
@@ -171,8 +180,7 @@ private:
 		D3D12_INDEX_BUFFER_VIEW     indexBufferView;
     };
 
-	MeshData m_triangleMesh;
-	MeshData m_quadMesh;
+	MeshData m_mesh[kAssetCount]; // 0: quad, 1: triangle
 
     struct TextureData
     {
@@ -182,8 +190,7 @@ private:
 		uint32_t width;
 		uint32_t height;
     };
-    const static uint32_t kTextureCount = 2;
-    TextureData m_textureData[kTextureCount];
+    TextureData m_textureData[kAssetCount];
 
 	ComPtr<ID3D12RootSignature> m_textureRootSignature;
     uint32_t m_indirectArgsCbvHeapOffset;

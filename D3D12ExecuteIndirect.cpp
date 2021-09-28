@@ -17,7 +17,7 @@ const UINT D3D12ExecuteIndirect::CommandSizePerFrame = TriangleCount * sizeof(In
 const UINT D3D12ExecuteIndirect::CommandBufferCounterOffset = AlignForUavCounter(D3D12ExecuteIndirect::CommandSizePerFrame);
 const float D3D12ExecuteIndirect::TriangleHalfWidth = 0.05f;
 const float D3D12ExecuteIndirect::TriangleDepth = 1.0f;
-const float D3D12ExecuteIndirect::CullingCutoff = 0.5f;
+const float D3D12ExecuteIndirect::CullingCutoff = 0.3f;
 
 
 template<typename T, typename ALIGNMENT>
@@ -545,7 +545,7 @@ void D3D12ExecuteIndirect::LoadAssets()
                 &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 nullptr,
-                IID_PPV_ARGS(&m_triangleMesh.vertexBuffer)));
+                IID_PPV_ARGS(&m_mesh[1].vertexBuffer)));
 
             ThrowIfFailed(m_device->CreateCommittedResource(
                 &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -555,7 +555,7 @@ void D3D12ExecuteIndirect::LoadAssets()
                 nullptr,
                 IID_PPV_ARGS(&triangleVertexBufferUpload)));
 
-            NAME_D3D12_OBJECT(m_triangleMesh.vertexBuffer);
+            NAME_D3D12_OBJECT(m_mesh[1].vertexBuffer);
 
             // Copy data to the intermediate upload heap and then schedule a copy
             // from the upload heap to the vertex buffer.
@@ -564,13 +564,13 @@ void D3D12ExecuteIndirect::LoadAssets()
             vertexData.RowPitch = vertexBufferSize;
             vertexData.SlicePitch = vertexData.RowPitch;
 
-            UpdateSubresources<1>(m_commandList.Get(), m_triangleMesh.vertexBuffer.Get(), triangleVertexBufferUpload.Get(), 0, 0, 1, &vertexData);
-            m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_triangleMesh.vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+            UpdateSubresources<1>(m_commandList.Get(), m_mesh[1].vertexBuffer.Get(), triangleVertexBufferUpload.Get(), 0, 0, 1, &vertexData);
+            m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_mesh[1].vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
 
             // Initialize the vertex buffer view.
-            m_triangleMesh.vertexBufferView.BufferLocation = m_triangleMesh.vertexBuffer->GetGPUVirtualAddress();
-            m_triangleMesh.vertexBufferView.StrideInBytes = sizeof(Vertex);
-            m_triangleMesh.vertexBufferView.SizeInBytes = sizeof(triangleVertices);
+            m_mesh[1].vertexBufferView.BufferLocation = m_mesh[1].vertexBuffer->GetGPUVirtualAddress();
+            m_mesh[1].vertexBufferView.StrideInBytes = sizeof(Vertex);
+            m_mesh[1].vertexBufferView.SizeInBytes = sizeof(triangleVertices);
         }
 
         // Create the Index buffer
@@ -585,7 +585,7 @@ void D3D12ExecuteIndirect::LoadAssets()
 				&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
 				D3D12_RESOURCE_STATE_COPY_DEST,
 				nullptr,
-				IID_PPV_ARGS(&m_triangleMesh.indexBuffer)));
+				IID_PPV_ARGS(&m_mesh[1].indexBuffer)));
 
 			ThrowIfFailed(m_device->CreateCommittedResource(
 				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -595,7 +595,7 @@ void D3D12ExecuteIndirect::LoadAssets()
 				nullptr,
 				IID_PPV_ARGS(&triangleIndexBufferUpload)));
 
-			NAME_D3D12_OBJECT(m_triangleMesh.indexBuffer);
+			NAME_D3D12_OBJECT(m_mesh[1].indexBuffer);
 
 			// Copy data to the intermediate upload heap and then schedule a copy
 			// from the upload heap to the vertex buffer.
@@ -604,13 +604,13 @@ void D3D12ExecuteIndirect::LoadAssets()
             indexData.RowPitch = indexBufferSize;
             indexData.SlicePitch = indexData.RowPitch;
 
-			UpdateSubresources<1>(m_commandList.Get(), m_triangleMesh.indexBuffer.Get(), triangleIndexBufferUpload.Get(), 0, 0, 1, &indexData);
-			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_triangleMesh.indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
+			UpdateSubresources<1>(m_commandList.Get(), m_mesh[1].indexBuffer.Get(), triangleIndexBufferUpload.Get(), 0, 0, 1, &indexData);
+			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_mesh[1].indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
 
 			// Initialize the index buffer view.
-            m_triangleMesh.indexBufferView.BufferLocation = m_triangleMesh.indexBuffer->GetGPUVirtualAddress();
-            m_triangleMesh.indexBufferView.SizeInBytes = indexBufferSize;
-            m_triangleMesh.indexBufferView.Format = DXGI_FORMAT_R16_UINT;
+            m_mesh[1].indexBufferView.BufferLocation = m_mesh[1].indexBuffer->GetGPUVirtualAddress();
+            m_mesh[1].indexBufferView.SizeInBytes = indexBufferSize;
+            m_mesh[1].indexBufferView.Format = DXGI_FORMAT_R16_UINT;
         }
     }
 
@@ -635,7 +635,7 @@ void D3D12ExecuteIndirect::LoadAssets()
 				&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
 				D3D12_RESOURCE_STATE_COPY_DEST,
 				nullptr,
-				IID_PPV_ARGS(&m_quadMesh.vertexBuffer)));
+				IID_PPV_ARGS(&m_mesh[0].vertexBuffer)));
 
 			ThrowIfFailed(m_device->CreateCommittedResource(
 				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -645,7 +645,7 @@ void D3D12ExecuteIndirect::LoadAssets()
 				nullptr,
 				IID_PPV_ARGS(&quadVertexBufferUpload)));
 
-			NAME_D3D12_OBJECT(m_quadMesh.vertexBuffer);
+			NAME_D3D12_OBJECT(m_mesh[0].vertexBuffer);
 
 			// Copy data to the intermediate upload heap and then schedule a copy
 			// from the upload heap to the vertex buffer.
@@ -654,13 +654,13 @@ void D3D12ExecuteIndirect::LoadAssets()
 			vertexData.RowPitch = vertexBufferSize;
 			vertexData.SlicePitch = vertexData.RowPitch;
 
-			UpdateSubresources<1>(m_commandList.Get(), m_quadMesh.vertexBuffer.Get(), quadVertexBufferUpload.Get(), 0, 0, 1, &vertexData);
-			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_quadMesh.vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+			UpdateSubresources<1>(m_commandList.Get(), m_mesh[0].vertexBuffer.Get(), quadVertexBufferUpload.Get(), 0, 0, 1, &vertexData);
+			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_mesh[0].vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
 
 			// Initialize the vertex buffer view.
-            m_quadMesh.vertexBufferView.BufferLocation = m_quadMesh.vertexBuffer->GetGPUVirtualAddress();
-            m_quadMesh.vertexBufferView.StrideInBytes = sizeof(Vertex);
-            m_quadMesh.vertexBufferView.SizeInBytes = sizeof(quadVertices);
+            m_mesh[0].vertexBufferView.BufferLocation = m_mesh[0].vertexBuffer->GetGPUVirtualAddress();
+            m_mesh[0].vertexBufferView.StrideInBytes = sizeof(Vertex);
+            m_mesh[0].vertexBufferView.SizeInBytes = sizeof(quadVertices);
 		}
 
 		// Create the Index buffer
@@ -675,7 +675,7 @@ void D3D12ExecuteIndirect::LoadAssets()
 				&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
 				D3D12_RESOURCE_STATE_COPY_DEST,
 				nullptr,
-				IID_PPV_ARGS(&m_quadMesh.indexBuffer)));
+				IID_PPV_ARGS(&m_mesh[0].indexBuffer)));
 
 			ThrowIfFailed(m_device->CreateCommittedResource(
 				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -685,7 +685,7 @@ void D3D12ExecuteIndirect::LoadAssets()
 				nullptr,
 				IID_PPV_ARGS(&quadIndexBufferUpload)));
 
-			NAME_D3D12_OBJECT(m_quadMesh.indexBuffer);
+			NAME_D3D12_OBJECT(m_mesh[0].indexBuffer);
 
 			// Copy data to the intermediate upload heap and then schedule a copy
 			// from the upload heap to the vertex buffer.
@@ -694,13 +694,13 @@ void D3D12ExecuteIndirect::LoadAssets()
 			indexData.RowPitch = indexBufferSize;
 			indexData.SlicePitch = indexData.RowPitch;
 
-			UpdateSubresources<1>(m_commandList.Get(), m_quadMesh.indexBuffer.Get(), quadIndexBufferUpload.Get(), 0, 0, 1, &indexData);
-			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_quadMesh.indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
+			UpdateSubresources<1>(m_commandList.Get(), m_mesh[0].indexBuffer.Get(), quadIndexBufferUpload.Get(), 0, 0, 1, &indexData);
+			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_mesh[0].indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
 
 			// Initialize the index buffer view.
-            m_quadMesh.indexBufferView.BufferLocation = m_quadMesh.indexBuffer->GetGPUVirtualAddress();
-            m_quadMesh.indexBufferView.SizeInBytes = indexBufferSize;
-            m_quadMesh.indexBufferView.Format = DXGI_FORMAT_R16_UINT;
+            m_mesh[0].indexBufferView.BufferLocation = m_mesh[0].indexBuffer->GetGPUVirtualAddress();
+            m_mesh[0].indexBufferView.SizeInBytes = indexBufferSize;
+            m_mesh[0].indexBufferView.Format = DXGI_FORMAT_R16_UINT;
 		}
 	}
 	
@@ -735,7 +735,7 @@ void D3D12ExecuteIndirect::LoadAssets()
 	// Create the texture.
 	ComPtr<ID3D12Resource> textureStaging[2]; // this has to be valid until the cmd has been finished
     std::string filenames[2] = { "yeti.png" , "stadia.png" };
-    for(uint32_t i=0;i<kTextureCount;++i)
+    for(uint32_t i=0;i<kAssetCount;++i)
 	{
         m_textureData[i].heapOffset = CbvSrvUavDescriptorCountPerFrame * FrameCount + i*2;
 		std::vector<UINT8> imageData;
@@ -771,7 +771,7 @@ void D3D12ExecuteIndirect::LoadAssets()
 		textureData.SlicePitch = textureData.RowPitch * textureDesc.Height;
 
 		UpdateSubresources(m_commandList.Get(), m_textureData[i].texture.Get(), textureStaging[i].Get(), 0, 0, 1, &textureData);
-		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_textureData[i].texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_textureData[i].texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -826,9 +826,11 @@ void D3D12ExecuteIndirect::LoadAssets()
 
         IndirectArgsConstantBuffer indirectArgsConstantBuffer;
         uint32_t indexCount[] = { 6, 3 };
-        for (uint32_t i = 0; i < kTextureCount; ++i)
+        for (uint32_t i = 0; i < kAssetCount; ++i)
         {
-            indirectArgsConstantBuffer.srvAddress[i] = m_textureData[i].buffer->GetGPUVirtualAddress();
+			indirectArgsConstantBuffer.srvAddress[i] = m_textureData[i].buffer->GetGPUVirtualAddress();
+			indirectArgsConstantBuffer.ib[i] = m_mesh[i].indexBufferView;
+			indirectArgsConstantBuffer.vb[i] = m_mesh[i].vertexBufferView;
             indirectArgsConstantBuffer.rootConstants[i] = XMFLOAT4(m_viewport.Width, m_viewport.Height, (float)m_textureData[i].width, (float)m_textureData[i].height);
             indirectArgsConstantBuffer.indexCountPerInstance[i] = indexCount[i];
         }
@@ -899,20 +901,24 @@ void D3D12ExecuteIndirect::LoadAssets()
     // Create the command signature used for indirect drawing.
     {
         // Each command consists of a CBV update and a DrawInstanced call.
-        D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[4] = {};
+        D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[6] = {};
         argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT_BUFFER_VIEW;
         argumentDescs[0].ConstantBufferView.RootParameterIndex = Cbv;
 		argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_SHADER_RESOURCE_VIEW;
 		argumentDescs[1].ConstantBufferView.RootParameterIndex = Srv;
-		argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
-		argumentDescs[2].Constant.RootParameterIndex = RootConst;
-		argumentDescs[2].Constant.DestOffsetIn32BitValues = 0;
-		argumentDescs[2].Constant.Num32BitValuesToSet = 4;
-        argumentDescs[3].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+		argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_INDEX_BUFFER_VIEW;
+		argumentDescs[3].Type = D3D12_INDIRECT_ARGUMENT_TYPE_VERTEX_BUFFER_VIEW;
+		argumentDescs[3].VertexBuffer.Slot = 0;
+		argumentDescs[4].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
+		argumentDescs[4].Constant.RootParameterIndex = RootConst;
+		argumentDescs[4].Constant.DestOffsetIn32BitValues = 0;
+		argumentDescs[4].Constant.Num32BitValuesToSet = 4;
+        argumentDescs[5].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
 
         D3D12_COMMAND_SIGNATURE_DESC commandSignatureDesc = {};
         commandSignatureDesc.pArgumentDescs = argumentDescs;
         commandSignatureDesc.NumArgumentDescs = _countof(argumentDescs);
+        // RW: since here you have the stride, you can add paddings
         commandSignatureDesc.ByteStride = sizeof(IndirectCommand);
 
         ThrowIfFailed(m_device->CreateCommandSignature(&commandSignatureDesc, m_rootSignature.Get(), IID_PPV_ARGS(&m_commandSignature)));
@@ -954,6 +960,8 @@ void D3D12ExecuteIndirect::LoadAssets()
 				commands[commandIndex].cbv = gpuAddress;
 				commands[commandIndex].rootConstants = XMFLOAT4(m_viewport.Width, m_viewport.Height, (float)m_textureData[0].width, (float)m_textureData[0].height);
 				commands[commandIndex].srv = m_textureData[0].buffer->GetGPUVirtualAddress();
+				commands[commandIndex].ib = m_mesh[0].indexBufferView;
+				commands[commandIndex].vb = m_mesh[0].vertexBufferView;
 				commands[commandIndex].drawArguments.BaseVertexLocation = 0;
 				commands[commandIndex].drawArguments.IndexCountPerInstance = 6;
                 commands[commandIndex].drawArguments.InstanceCount = 1;
@@ -1047,7 +1055,7 @@ void D3D12ExecuteIndirect::LoadAssets()
 	/**************************************************************************************************/
 	ID3D12DescriptorHeap* ppHeaps[] = { m_cbvSrvUavHeap.Get() };
     m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-    for (uint32_t i=0;i<kTextureCount;++i)
+    for (uint32_t i=0;i<kAssetCount;++i)
 	{
 	    m_commandList->SetPipelineState(m_textureState.Get());
 	    m_commandList->SetComputeRootSignature(m_textureRootSignature.Get());
@@ -1267,7 +1275,8 @@ void D3D12ExecuteIndirect::PopulateCommandLists()
 		m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 
         m_commandList->RSSetViewports(1, &m_viewport);
-        //m_commandList->RSSetScissorRects(1, m_enableCulling ? &m_cullingScissorRect : &m_scissorRect);
+		//m_commandList->RSSetScissorRects(1, m_enableCulling ? &m_cullingScissorRect : &m_scissorRect);
+		m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
         // Indicate that the command buffer will be used for indirect drawing
         // and that the back buffer will be used as a render target.
@@ -1294,11 +1303,6 @@ void D3D12ExecuteIndirect::PopulateCommandLists()
         m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
         m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        // TODO_RW: fix me!!!
-        /*m_commandList->IASetVertexBuffers(0, 1, &m_triangleMesh.vertexBufferView);
-        m_commandList->IASetIndexBuffer(&m_triangleMesh.indexBufferView);*/
-		m_commandList->IASetVertexBuffers(0, 1, &m_quadMesh.vertexBufferView);
-		m_commandList->IASetIndexBuffer(&m_quadMesh.indexBufferView);
 
         if (m_enableCulling)
         {

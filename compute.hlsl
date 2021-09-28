@@ -20,16 +20,33 @@ struct SceneConstantBuffer
     float4 padding[9];
 };
 
+struct IndexBufferView
+{
+    uint2   address;
+    uint    sizeInBytes;
+    uint    format;
+};
+
+struct VertexBufferView
+{
+    uint2   address;
+    uint    sizeInBytes;
+    uint    strideInBytes;
+};
+
 struct IndirectCommand
 {
     uint2 cbvAddress;
     uint2 srvAddress;
+    IndexBufferView ib;
+    VertexBufferView vb;
     float4 rootConstants;
     uint IndexCountPerInstance;
     uint InstanceCount;
     uint StartIndexLocation;
     int BaseVertexLocation;
     uint StartInstanceLocation;
+    float padding; 
 };
 
 cbuffer RootConstants : register(b0)
@@ -40,24 +57,19 @@ cbuffer RootConstants : register(b0)
     float commandCount;    // The number of commands to be processed.
 };
 
-// not sure why this is not working?!?!
-//cbuffer IndirectArgsConstants : register(b1)
-//{
-//    uint2 srvAddress[2];
-//    float4 rootConstants[2];
-//    uint indexCountPerInstance[2];
-//    float padding[50];
-//};
-
 cbuffer IndirectArgsConstants : register(b1)
 {
     uint2 srvAddress0;
     uint2 srvAddress1;
+    IndexBufferView ib0;
+    IndexBufferView ib1;
+    VertexBufferView vb0;
+    VertexBufferView vb1;
     float4 rootConstants0;
     float4 rootConstants1;
     uint indexCountPerInstance0;
     uint indexCountPerInstance1;
-    float padding[50];
+    float padding[34];
 };
 
 StructuredBuffer<SceneConstantBuffer> cbv                : register(t0);    // SRV: Wrapped constant buffers
@@ -83,24 +95,23 @@ void CSMain(uint3 groupId : SV_GroupID, uint groupIndex : SV_GroupIndex)
         right = mul(right, cbv[index].projection);
         right /= right.w;
 
-        IndirectCommand cmd; 
-        cmd.BaseVertexLocation = 0;
-        cmd.IndexCountPerInstance = 6; // TODO_RW: change this!!!
-        cmd.InstanceCount = 1;
-        cmd.StartIndexLocation = 0;
-        cmd.StartInstanceLocation = 0;
-        cmd.cbvAddress = inputCommands[index].cbvAddress;
-        cmd.srvAddress = inputCommands[index].srvAddress;
-        cmd.rootConstants = inputCommands[index].rootConstants;
+        IndirectCommand cmd = inputCommands[index];
+        
         if (-cullOffset < right.x && left.x < cullOffset)
         {
             cmd.srvAddress = srvAddress0;
+            cmd.ib = ib0;
+            cmd.vb = vb0;
             cmd.rootConstants = rootConstants0;
+            cmd.IndexCountPerInstance = indexCountPerInstance0;
         }
         else
         {
             cmd.srvAddress = srvAddress1;
+            cmd.ib = ib1;
+            cmd.vb = vb1;
             cmd.rootConstants = rootConstants1;
+            cmd.IndexCountPerInstance = indexCountPerInstance1; 
         }
         outputCommands.Append(cmd);
     }
