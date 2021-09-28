@@ -23,7 +23,13 @@ struct SceneConstantBuffer
 struct IndirectCommand
 {
     uint2 cbvAddress;
-    uint4 drawArguments;
+    uint2 srvAddress;
+    float4 rootConstants;
+    uint IndexCountPerInstance;
+    uint InstanceCount;
+    uint StartIndexLocation;
+    int BaseVertexLocation;
+    uint StartInstanceLocation;
 };
 
 cbuffer RootConstants : register(b0)
@@ -32,6 +38,26 @@ cbuffer RootConstants : register(b0)
     float zOffset;        // The z offset for the triangle vertices.
     float cullOffset;    // The culling plane offset in homogenous space.
     float commandCount;    // The number of commands to be processed.
+};
+
+// not sure why this is not working?!?!
+//cbuffer IndirectArgsConstants : register(b1)
+//{
+//    uint2 srvAddress[2];
+//    float4 rootConstants[2];
+//    uint indexCountPerInstance[2];
+//    float padding[50];
+//};
+
+cbuffer IndirectArgsConstants : register(b1)
+{
+    uint2 srvAddress0;
+    uint2 srvAddress1;
+    float4 rootConstants0;
+    float4 rootConstants1;
+    uint indexCountPerInstance0;
+    uint indexCountPerInstance1;
+    float padding[50];
 };
 
 StructuredBuffer<SceneConstantBuffer> cbv                : register(t0);    // SRV: Wrapped constant buffers
@@ -57,10 +83,25 @@ void CSMain(uint3 groupId : SV_GroupID, uint groupIndex : SV_GroupIndex)
         right = mul(right, cbv[index].projection);
         right /= right.w;
 
-        // Only draw triangles that are within the culling space.
+        IndirectCommand cmd; 
+        cmd.BaseVertexLocation = 0;
+        cmd.IndexCountPerInstance = 6; // TODO_RW: change this!!!
+        cmd.InstanceCount = 1;
+        cmd.StartIndexLocation = 0;
+        cmd.StartInstanceLocation = 0;
+        cmd.cbvAddress = inputCommands[index].cbvAddress;
+        cmd.srvAddress = inputCommands[index].srvAddress;
+        cmd.rootConstants = inputCommands[index].rootConstants;
         if (-cullOffset < right.x && left.x < cullOffset)
         {
-            outputCommands.Append(inputCommands[index]);
+            cmd.srvAddress = srvAddress0;
+            cmd.rootConstants = rootConstants0;
         }
+        else
+        {
+            cmd.srvAddress = srvAddress1;
+            cmd.rootConstants = rootConstants1;
+        }
+        outputCommands.Append(cmd);
     }
 }

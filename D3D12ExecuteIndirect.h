@@ -58,12 +58,18 @@ private:
         XMFLOAT4 offset;
         XMFLOAT4 color;
         XMFLOAT4X4 projection;
-        XMFLOAT4 size;
-
         // Constant buffers are 256-byte aligned. Add padding in the struct to allow multiple buffers
         // to be array-indexed.
-        float padding[32];
+        float padding[36];
     };
+
+	struct IndirectArgsConstantBuffer
+	{
+		D3D12_GPU_VIRTUAL_ADDRESS   srvAddress[2];
+		XMFLOAT4                    rootConstants[2];
+        uint32_t                    indexCountPerInstance[2];
+		float padding[50];
+	};
 
     // Root constants for the compute shader.
     struct CSRootConstants
@@ -77,9 +83,10 @@ private:
     // Data structure to match the command signature used for ExecuteIndirect.
     struct IndirectCommand
     {
-		D3D12_GPU_VIRTUAL_ADDRESS cbv;
-		D3D12_GPU_VIRTUAL_ADDRESS srv;
-        D3D12_DRAW_INDEXED_ARGUMENTS drawArguments;
+		D3D12_GPU_VIRTUAL_ADDRESS       cbv;
+		D3D12_GPU_VIRTUAL_ADDRESS       srv;
+		XMFLOAT4                        rootConstants;
+		D3D12_DRAW_INDEXED_ARGUMENTS    drawArguments;
     };
 
     // Graphics root signature parameter offsets.
@@ -87,7 +94,8 @@ private:
     {
 		Cbv,
 		Srv,
-        GraphicsRootParametersCount
+		RootConst,
+		GraphicsRootParametersCount
     };
 
     // Compute root signature parameter offsets.
@@ -95,15 +103,16 @@ private:
     {
         SrvUavTable,
         RootConstants,            // Root constants that give the shader information about the triangle vertices and culling planes.
-        ComputeRootParametersCount
+		IndirectArgsCbv,
+		ComputeRootParametersCount
     };
 
     // CBV/SRV/UAV descriptor heap offsets.
     enum HeapOffsets
     {
-        CbvSrvOffset = 0,                                                    // SRV that points to the constant buffers used by the rendering thread.
-        CommandsOffset = CbvSrvOffset + 1,                                    // SRV that points to all of the indirect commands.
-        ProcessedCommandsOffset = CommandsOffset + 1,                        // UAV that records the commands we actually want to execute.
+        CbvSrvOffset = 0,                                                   // SRV that points to the constant buffers used by the rendering thread.
+        CommandsOffset = CbvSrvOffset + 1,                                  // SRV that points to all of the indirect commands.
+		ProcessedCommandsOffset = CommandsOffset + 1,                       // UAV that records the commands we actually want to execute.
         CbvSrvUavDescriptorCountPerFrame = ProcessedCommandsOffset + 1        // 2 SRVs + 1 UAV for the compute shader.
     };
 
@@ -147,7 +156,8 @@ private:
 	ComPtr<ID3D12PipelineState> m_textureState;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
     ComPtr<ID3D12GraphicsCommandList> m_computeCommandList;
-    ComPtr<ID3D12Resource> m_constantBuffer;
+	ComPtr<ID3D12Resource> m_constantBuffer;
+	ComPtr<ID3D12Resource> m_indirectArgsConstantBuffer;
     ComPtr<ID3D12Resource> m_depthStencil;
     ComPtr<ID3D12Resource> m_commandBuffer;
     ComPtr<ID3D12Resource> m_processedCommandBuffers[FrameCount];
@@ -163,12 +173,20 @@ private:
 
 	MeshData m_triangleMesh;
 	MeshData m_quadMesh;
-	ComPtr<ID3D12Resource> m_texture;
-	ComPtr<ID3D12Resource> m_textureBuffer;
-	uint32_t m_textureHeapOffset;
-	uint32_t m_textureWidth;
-	uint32_t m_textureHeight;
+
+    struct TextureData
+    {
+		ComPtr<ID3D12Resource> texture;
+		ComPtr<ID3D12Resource> buffer;
+		uint32_t heapOffset;
+		uint32_t width;
+		uint32_t height;
+    };
+    const static uint32_t kTextureCount = 2;
+    TextureData m_textureData[kTextureCount];
+
 	ComPtr<ID3D12RootSignature> m_textureRootSignature;
+    uint32_t m_indirectArgsCbvHeapOffset;
 
 
     void LoadPipeline();

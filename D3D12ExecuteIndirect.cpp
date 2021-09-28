@@ -392,6 +392,7 @@ void D3D12ExecuteIndirect::LoadAssets()
         CD3DX12_ROOT_PARAMETER1 rootParameters[GraphicsRootParametersCount];
 		rootParameters[Cbv].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
 		rootParameters[Srv].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_PIXEL);
+		rootParameters[RootConst].InitAsConstants(4, 1, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
         rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -410,6 +411,7 @@ void D3D12ExecuteIndirect::LoadAssets()
         CD3DX12_ROOT_PARAMETER1 computeRootParameters[ComputeRootParametersCount];
         computeRootParameters[SrvUavTable].InitAsDescriptorTable(2, ranges);
         computeRootParameters[RootConstants].InitAsConstants(4, 0);
+        computeRootParameters[IndirectArgsCbv].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
         computeRootSignatureDesc.Init_1_1(_countof(computeRootParameters), computeRootParameters);
@@ -730,15 +732,16 @@ void D3D12ExecuteIndirect::LoadAssets()
 
 	/**************************************************************************************************/
 	// user data
-	m_textureHeapOffset = CbvSrvUavDescriptorCountPerFrame * FrameCount;
 	// Create the texture.
-	ComPtr<ID3D12Resource> textureStaging; // this has to be valid until the cmd has been finished
+	ComPtr<ID3D12Resource> textureStaging[2]; // this has to be valid until the cmd has been finished
+    std::string filenames[2] = { "yeti.png" , "stadia.png" };
+    for(uint32_t i=0;i<kTextureCount;++i)
 	{
+        m_textureData[i].heapOffset = CbvSrvUavDescriptorCountPerFrame * FrameCount + i*2;
 		std::vector<UINT8> imageData;
 		D3D12_RESOURCE_DESC textureDesc = {};
 		int imageBytesPerRow;
-		std::string filename = "yeti.png";
-		LoadImageDataFromFile(imageData, textureDesc, filename, imageBytesPerRow);
+		LoadImageDataFromFile(imageData, textureDesc, filenames[i], imageBytesPerRow);
 
 		ThrowIfFailed(m_device->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
@@ -746,12 +749,12 @@ void D3D12ExecuteIndirect::LoadAssets()
 			&textureDesc,
 			D3D12_RESOURCE_STATE_COPY_DEST,
 			nullptr,
-			IID_PPV_ARGS(&m_texture)));
+			IID_PPV_ARGS(&m_textureData[i].texture)));
 
-		m_textureWidth = (uint32_t)textureDesc.Width;
-		m_textureHeight = (uint32_t)textureDesc.Height;
+        m_textureData[i].width = (uint32_t)textureDesc.Width;
+        m_textureData[i].height = (uint32_t)textureDesc.Height;
 
-		const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_texture.Get(), 0, 1);
+		const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_textureData[i].texture.Get(), 0, 1);
 
 		// Create the GPU upload buffer.
 		ThrowIfFailed(m_device->CreateCommittedResource(
@@ -760,23 +763,23 @@ void D3D12ExecuteIndirect::LoadAssets()
 			&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
-			IID_PPV_ARGS(&textureStaging)));
+			IID_PPV_ARGS(&textureStaging[i])));
 
 		D3D12_SUBRESOURCE_DATA textureData = {};
 		textureData.pData = &imageData[0];
 		textureData.RowPitch = imageBytesPerRow;
 		textureData.SlicePitch = textureData.RowPitch * textureDesc.Height;
 
-		UpdateSubresources(m_commandList.Get(), m_texture.Get(), textureStaging.Get(), 0, 0, 1, &textureData);
-		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+		UpdateSubresources(m_commandList.Get(), m_textureData[i].texture.Get(), textureStaging[i].Get(), 0, 0, 1, &textureData);
+		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_textureData[i].texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.Format = textureDesc.Format;
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MipLevels = 1;
-		CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(m_cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), m_textureHeapOffset, m_cbvSrvUavDescriptorSize);
-		m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, srvHandle);
+		CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(m_cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), m_textureData[i].heapOffset, m_cbvSrvUavDescriptorSize);
+		m_device->CreateShaderResourceView(m_textureData[i].texture.Get(), &srvDesc, srvHandle);
 
 		// create a buffer to keep the output result
 		D3D12_RESOURCE_DESC commandBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(textureDesc.Width * textureDesc.Height * 3 * sizeof(float), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
@@ -786,25 +789,62 @@ void D3D12ExecuteIndirect::LoadAssets()
 			&commandBufferDesc,
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 			nullptr,
-			IID_PPV_ARGS(&m_textureBuffer)));
+			IID_PPV_ARGS(&m_textureData[i].buffer)));
 
-		NAME_D3D12_OBJECT(m_textureBuffer);
+		NAME_D3D12_OBJECT(m_textureData[i].buffer);
 
 		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 		uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
 		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
 		uavDesc.Buffer.FirstElement = 0;
-		uavDesc.Buffer.NumElements = m_textureWidth * m_textureHeight * 3;
+		uavDesc.Buffer.NumElements = m_textureData[i].width * m_textureData[i].height * 3;
 		uavDesc.Buffer.StructureByteStride = 0;
 		uavDesc.Buffer.CounterOffsetInBytes = 0;
 		uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
 
-		CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(m_cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), m_textureHeapOffset + 1, m_cbvSrvUavDescriptorSize);
+		CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(m_cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), m_textureData[i].heapOffset + 1, m_cbvSrvUavDescriptorSize);
 		m_device->CreateUnorderedAccessView(
-			m_textureBuffer.Get(),
+            m_textureData[i].buffer.Get(),
 			nullptr,
 			&uavDesc,
 			uavHandle);
+	}
+
+	// Create the IndirectArgsConstantBuffer.
+	{
+		const UINT constantBufferDataSize = sizeof(IndirectArgsConstantBuffer);
+
+		ThrowIfFailed(m_device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Buffer(constantBufferDataSize),
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&m_indirectArgsConstantBuffer)));
+
+		NAME_D3D12_OBJECT(m_indirectArgsConstantBuffer);
+
+        IndirectArgsConstantBuffer indirectArgsConstantBuffer;
+        uint32_t indexCount[] = { 6, 3 };
+        for (uint32_t i = 0; i < kTextureCount; ++i)
+        {
+            indirectArgsConstantBuffer.srvAddress[i] = m_textureData[i].buffer->GetGPUVirtualAddress();
+            indirectArgsConstantBuffer.rootConstants[i] = XMFLOAT4(m_viewport.Width, m_viewport.Height, (float)m_textureData[i].width, (float)m_textureData[i].height);
+            indirectArgsConstantBuffer.indexCountPerInstance[i] = indexCount[i];
+        }
+
+		CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+        UINT8* address;
+		ThrowIfFailed(m_indirectArgsConstantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&address)));
+		memcpy(address, &indirectArgsConstantBuffer, sizeof(IndirectArgsConstantBuffer));
+        m_indirectArgsConstantBuffer->Unmap(0, nullptr);
+
+        m_indirectArgsCbvHeapOffset = m_textureData[1].heapOffset + 2;
+		CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), m_indirectArgsCbvHeapOffset, m_cbvSrvUavDescriptorSize);
+        D3D12_CONSTANT_BUFFER_VIEW_DESC desc;
+        desc.BufferLocation = m_indirectArgsConstantBuffer->GetGPUVirtualAddress();
+        desc.SizeInBytes = sizeof(IndirectArgsConstantBuffer);
+        m_device->CreateConstantBufferView(&desc, cbvHandle);
 	}
 	/**************************************************************************************************/
 
@@ -829,7 +869,6 @@ void D3D12ExecuteIndirect::LoadAssets()
             m_constantBufferData[n].offset = XMFLOAT4(GetRandomFloat(-5.0f, -1.5f), GetRandomFloat(-1.0f, 1.0f), GetRandomFloat(0.0f, 2.0f), 0.0f);
             m_constantBufferData[n].color = XMFLOAT4(GetRandomFloat(0.5f, 1.0f), GetRandomFloat(0.5f, 1.0f), GetRandomFloat(0.5f, 1.0f), 1.0f);
             XMStoreFloat4x4(&m_constantBufferData[n].projection, XMMatrixTranspose(XMMatrixPerspectiveFovLH(XM_PIDIV4, m_aspectRatio, 0.01f, 20.0f)));
-			m_constantBufferData[n].size = XMFLOAT4(m_viewport.Width, m_viewport.Height, (float)m_textureWidth, (float)m_textureHeight);
 		}
 
         // Map and initialize the constant buffer. We don't unmap this until the
@@ -860,12 +899,16 @@ void D3D12ExecuteIndirect::LoadAssets()
     // Create the command signature used for indirect drawing.
     {
         // Each command consists of a CBV update and a DrawInstanced call.
-        D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[3] = {};
+        D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[4] = {};
         argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT_BUFFER_VIEW;
         argumentDescs[0].ConstantBufferView.RootParameterIndex = Cbv;
 		argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_SHADER_RESOURCE_VIEW;
 		argumentDescs[1].ConstantBufferView.RootParameterIndex = Srv;
-        argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+		argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
+		argumentDescs[2].Constant.RootParameterIndex = RootConst;
+		argumentDescs[2].Constant.DestOffsetIn32BitValues = 0;
+		argumentDescs[2].Constant.Num32BitValuesToSet = 4;
+        argumentDescs[3].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
 
         D3D12_COMMAND_SIGNATURE_DESC commandSignatureDesc = {};
         commandSignatureDesc.pArgumentDescs = argumentDescs;
@@ -909,7 +952,8 @@ void D3D12ExecuteIndirect::LoadAssets()
             for (UINT n = 0; n < TriangleCount; n++)
             {
 				commands[commandIndex].cbv = gpuAddress;
-				commands[commandIndex].srv = m_textureBuffer->GetGPUVirtualAddress();
+				commands[commandIndex].rootConstants = XMFLOAT4(m_viewport.Width, m_viewport.Height, (float)m_textureData[0].width, (float)m_textureData[0].height);
+				commands[commandIndex].srv = m_textureData[0].buffer->GetGPUVirtualAddress();
 				commands[commandIndex].drawArguments.BaseVertexLocation = 0;
 				commands[commandIndex].drawArguments.IndexCountPerInstance = 6;
                 commands[commandIndex].drawArguments.InstanceCount = 1;
@@ -1001,19 +1045,22 @@ void D3D12ExecuteIndirect::LoadAssets()
     }
 
 	/**************************************************************************************************/
+	ID3D12DescriptorHeap* ppHeaps[] = { m_cbvSrvUavHeap.Get() };
+    m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+    for (uint32_t i=0;i<kTextureCount;++i)
 	{
 	    m_commandList->SetPipelineState(m_textureState.Get());
 	    m_commandList->SetComputeRootSignature(m_textureRootSignature.Get());
 	    D3D12_GPU_DESCRIPTOR_HANDLE cbvSrvUavHandle = m_cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart();
-	    uint32_t rootConsts[2] = { m_textureWidth, m_textureHeight };
+	    uint32_t rootConsts[2] = { m_textureData[i].width, m_textureData[i].height };
 	    m_commandList->SetComputeRoot32BitConstants(0, 2, reinterpret_cast<void*>(&rootConsts), 0);
 	    m_commandList->SetComputeRootDescriptorTable(
 		    1,
-		    CD3DX12_GPU_DESCRIPTOR_HANDLE(cbvSrvUavHandle, m_textureHeapOffset, m_cbvSrvUavDescriptorSize));
-	    m_commandList->Dispatch(AlignValue(m_textureWidth, 8) / 8, AlignValue(m_textureHeight, 8) / 8, 1);
+		    CD3DX12_GPU_DESCRIPTOR_HANDLE(cbvSrvUavHandle, m_textureData[i].heapOffset, m_cbvSrvUavDescriptorSize));
+	    m_commandList->Dispatch(AlignValue(m_textureData[i].width, 8) / 8, AlignValue(m_textureData[i].height, 8) / 8, 1);
 	    {
 		    D3D12_RESOURCE_BARRIER barriers[1] = {
-		    CD3DX12_RESOURCE_BARRIER::Transition(m_textureBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+		    CD3DX12_RESOURCE_BARRIER::Transition(m_textureData[i].buffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
 		    };
 		    m_commandList->ResourceBarrier(_countof(barriers), barriers);
 	    }
@@ -1197,6 +1244,7 @@ void D3D12ExecuteIndirect::PopulateCommandLists()
             CD3DX12_GPU_DESCRIPTOR_HANDLE(cbvSrvUavHandle, CbvSrvOffset + frameDescriptorOffset, m_cbvSrvUavDescriptorSize));
 
         m_computeCommandList->SetComputeRoot32BitConstants(RootConstants, 4, reinterpret_cast<void*>(&m_csRootConstants), 0);
+        m_computeCommandList->SetComputeRootConstantBufferView(IndirectArgsCbv, m_indirectArgsConstantBuffer->GetGPUVirtualAddress());
 
         // Reset the UAV counter for this frame.
         m_computeCommandList->CopyBufferRegion(m_processedCommandBuffers[m_frameIndex].Get(), CommandBufferCounterOffset, m_processedCommandBufferCounterReset.Get(), 0, sizeof(UINT));
@@ -1219,7 +1267,7 @@ void D3D12ExecuteIndirect::PopulateCommandLists()
 		m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 
         m_commandList->RSSetViewports(1, &m_viewport);
-        m_commandList->RSSetScissorRects(1, m_enableCulling ? &m_cullingScissorRect : &m_scissorRect);
+        //m_commandList->RSSetScissorRects(1, m_enableCulling ? &m_cullingScissorRect : &m_scissorRect);
 
         // Indicate that the command buffer will be used for indirect drawing
         // and that the back buffer will be used as a render target.

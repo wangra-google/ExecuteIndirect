@@ -15,6 +15,10 @@ cbuffer SceneConstantBuffer : register(b0)
     float4 offset;
     float4 color;
     float4x4 projection;
+};
+
+cbuffer RootConstants : register(b1)
+{
     float4 size;
 };
 
