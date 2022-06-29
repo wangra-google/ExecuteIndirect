@@ -35,3 +35,5 @@
 /bin/x64/Debug
 *.user
 /packages
+/obj/x64/Release
+/bin/x64/Release
